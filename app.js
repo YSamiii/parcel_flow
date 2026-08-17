@@ -201,14 +201,7 @@ function settings(){
     </div>
 
     <div class="card"><div class="section-title" style="margin-top:0">${t("sellers")}</div>
-      ${db.sellers.map(s=>`<div class="seller-edit-card" data-edit-seller="${s.id}">
-        <div class="seller-main">
-          <div class="seller-name">${esc(s.name)}</div>
-          <div class="small">${esc(s.defaultPickup||"—")}</div>
-        </div>
-        <button class="seller-edit-btn" data-edit-seller="${s.id}" aria-label="${t("editSeller")}">✎ ${t("editSeller")}</button>
-        <button class="seller-delete-btn" data-delete-seller="${s.id}" aria-label="${t("delete")}">🗑</button>
-      </div>`).join("")||`<div class="small">${t("noSeller")}</div>`}
+      ${db.sellers.map(s=>`<div class="list-row"><div data-edit-seller="${s.id}" style="cursor:pointer"><b>${esc(s.name)}</b><div class="small">${esc(s.defaultPickup||"—")}</div></div><div style="display:flex;gap:6px;flex:0 0 auto"><button class="secondary" data-edit-seller="${s.id}">${t("editSeller")}</button><button class="danger" data-delete-seller="${s.id}">${t("delete")}</button></div></div>`).join("")||`<div class="small">${t("noSeller")}</div>`}
     </div>
 
     <div class="card">
@@ -318,8 +311,6 @@ document.addEventListener("click",e=>{
   if(a==="new-order"){modal=orderModal();render();return}
   if(a==="new-recurring"){modal=recurringModal();render();return}
   if(a==="sellers"){modal=sellerModal();render();return}
-  const dsBtn=e.target.closest("[data-delete-seller]");
-  if(dsBtn){db.sellers=db.sellers.filter(s=>s.id!==dsBtn.dataset.deleteSeller);save();render();return}
   const es=e.target.closest("[data-edit-seller]");if(es){modal=sellerModal(es.dataset.editSeller);render();return}
   if(a==="export-backup"){exportBackup();return}
   if(a==="import-backup"){document.getElementById("backup-file")?.click();return}
@@ -332,6 +323,7 @@ document.addEventListener("click",e=>{
   const qs=e.target.closest("[data-quick-status]");if(qs){const o=db.orders.find(x=>x.id===qs.dataset.orderId);if(o){o.status=qs.dataset.quickStatus;save();modal=detailModal(o.id);render()}return}
   const del=e.target.closest("[data-delete-order]");if(del){db.orders=db.orders.filter(o=>o.id!==del.dataset.deleteOrder);save();modal=null;render();return}
   const dr=e.target.closest("[data-delete-recurring]");if(dr){db.recurring=db.recurring.filter(r=>r.id!==dr.dataset.deleteRecurring);save();modal=null;render();return}
+  const ds=e.target.closest("[data-delete-seller]");if(ds){db.sellers=db.sellers.filter(s=>s.id!==ds.dataset.deleteSeller);save();render();return}
   const ss=e.target.closest("[data-save-seller]");if(ss){
     const name=document.getElementById("s-name").value.trim();if(!name)return;
     const data={name,defaultPickup:document.getElementById("s-address").value.trim()};
