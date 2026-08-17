@@ -17,7 +17,7 @@ const I18N={
     warehoused:"已入库",notWarehoused:"未入库",orderPlaced:"已下单",pickedUp:"已取",
     arrivedPort:"到港",customStatus:"自定义",timeline:"物流时间线",
     noOrders:"还没有购物记录",sellerHint:"卖家由你自己添加，App 不预置任何名称。",
-    tempDoesNotChange:"临时地址只影响这笔购物，不修改卖家默认地址。"
+    tempDoesNotChange:"临时地址只影响这笔购物，不修改卖家默认地址。",backup:"备份与恢复",exportBackup:"导出备份",importBackup:"导入备份",backupHint:"导出完整购物、卖家和设置数据；导入会覆盖当前数据。",importSuccess:"备份导入成功",invalidBackup:"备份文件无效",confirmImport:"导入备份会覆盖当前 App 数据，是否继续？"
   },
   en:{
     home:"Home",orders:"Orders",shipping:"Shipping",pickup:"Pickup",settings:"Me",
@@ -36,7 +36,7 @@ const I18N={
     warehoused:"In warehouse",notWarehoused:"Not in warehouse",orderPlaced:"Ordered",pickedUp:"Picked up",
     arrivedPort:"Arrived at port",customStatus:"Custom",timeline:"Shipping timeline",
     noOrders:"No purchases yet",sellerHint:"You add your own sellers. The app does not prefill any names.",
-    tempDoesNotChange:"A temporary address only applies to this purchase."
+    tempDoesNotChange:"A temporary address only applies to this purchase.",backup:"Backup & Restore",exportBackup:"Export backup",importBackup:"Import backup",backupHint:"Export all purchases, sellers and settings. Importing replaces current app data.",importSuccess:"Backup imported successfully",invalidBackup:"Invalid backup file",confirmImport:"Importing a backup will replace current app data. Continue?"
   }
 };
 const STATUS=["awaitingPickup","awaitingLocalDelivery","train","sailed","arrivedPort","awaitingShip","awaitingPack","warehoused","notWarehoused","orderPlaced","pickedUp"];
@@ -139,6 +139,16 @@ function settings(){
     <div class="card"><div class="section-title" style="margin-top:0">${t("sellers")}</div>
       ${db.sellers.map(s=>`<div class="list-row"><div><b>${s.name}</b><div class="small">${s.defaultPickup||"—"}</div></div><button class="danger" data-delete-seller="${s.id}">${t("delete")}</button></div>`).join("")||`<div class="small">${t("noSeller")}</div>`}
     </div>
+
+    <div class="card">
+      <div class="section-title" style="margin-top:0">${t("backup")}</div>
+      <div class="small" style="margin-bottom:12px">${t("backupHint")}</div>
+      <div class="row">
+        <button class="secondary" data-action="export-backup">${t("exportBackup")}</button>
+        <button class="primary" data-action="import-backup">${t("importBackup")}</button>
+      </div>
+      <input id="backup-file" type="file" accept=".json,application/json" class="hidden">
+    </div>
   </div>`;
 }
 function orderModal(editId=null){
@@ -201,6 +211,56 @@ function detailModal(id){
   </div></div>`;
 }
 function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+
+function exportBackup(){
+  const payload={
+    app:"ParcelFlow",
+    version:3,
+    exportedAt:new Date().toISOString(),
+    data:db
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,"0");
+  a.href=url;
+  a.download=`ParcelFlow-backup-${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function isValidBackup(obj){
+  const data=obj?.data||obj;
+  return data &&
+    typeof data==="object" &&
+    data.settings && typeof data.settings==="object" &&
+    Array.isArray(data.sellers) &&
+    Array.isArray(data.orders);
+}
+
+function importBackupFile(file){
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const parsed=JSON.parse(reader.result);
+      if(!isValidBackup(parsed)) throw new Error("invalid");
+      if(!confirm(t("confirmImport"))) return;
+      db=parsed.data||parsed;
+      save();
+      modal=null;
+      render();
+      setTimeout(()=>alert(t("importSuccess")),50);
+    }catch(err){
+      alert(t("invalidBackup"));
+    }
+  };
+  reader.readAsText(file);
+}
+
 function render(){
   applyTheme();
   let body=tab==="home"?home():tab==="orders"?orders():tab==="shipping"?shipping():tab==="pickup"?pickup():settings();
@@ -214,6 +274,8 @@ document.addEventListener("click",e=>{
   const a=e.target.closest("[data-action]")?.dataset.action;
   if(a==="new-order"){modal=orderModal();render();return}
   if(a==="sellers"){modal=sellerModal();render();return}
+  if(a==="export-backup"){exportBackup();return}
+  if(a==="import-backup"){document.getElementById("backup-file")?.click();return}
   if(a==="close"){modal=null;render();return}
   const ord=e.target.closest("[data-order]"); if(ord){modal=detailModal(ord.dataset.order);render();return}
   const edit=e.target.closest("[data-edit-order]"); if(edit){modal=orderModal(edit.dataset.editOrder);render();return}
@@ -263,6 +325,11 @@ document.addEventListener("click",e=>{
   }
 });
 document.addEventListener("change",e=>{
+  if(e.target.id==="backup-file"){
+    importBackupFile(e.target.files?.[0]);
+    e.target.value="";
+    return;
+  }
   if(!["language","appearance","palette"].includes(e.target.id))return;
   db.settings[e.target.id]=e.target.value;save();render();
 });
