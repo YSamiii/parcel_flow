@@ -29,7 +29,7 @@ const I18N={
     pickedUp:"已取",waitingPickup:"待领取",collected:"已领取",deliveryFailed:"配送失败",
     refunded:"已退款",cancelled:"已取消",shippingMode:"运输方式",orderStatus:"订单状态",
     logisticsStatus:"物流状态",recurringHint:"自动订购计划是模板；每次真正下单后仍会生成一笔实际购物记录。",
-    tempDoesNotChange:"临时地址只影响这笔购物，不修改卖家默认地址。"
+    tempDoesNotChange:"临时地址只影响这笔购物，不修改卖家默认地址。",editSeller:"修改卖家",scheduleType:"订购频率",everyDays:"每 X 天",everyMonths:"每 X 个月",intervalValue:"间隔",nextAutoOrder:"下次自动下单日期",lastOrder:"上次下单日期",autoCreate:"到期时自动生成购物记录",recurringNotes:"订购备注"
   },
   en:{
     home:"Home",orders:"Orders",packages:"Packages",pickup:"Pickup",settings:"Me",
@@ -60,7 +60,7 @@ const I18N={
     pickedUp:"Picked up",waitingPickup:"Waiting to collect",collected:"Collected",deliveryFailed:"Delivery failed",
     refunded:"Refunded",cancelled:"Cancelled",shippingMode:"Shipping method",orderStatus:"Order status",
     logisticsStatus:"Logistics status",recurringHint:"Recurring plans are templates; each actual order is still saved as a purchase.",
-    tempDoesNotChange:"A temporary address only applies to this purchase."
+    tempDoesNotChange:"A temporary address only applies to this purchase.",editSeller:"Edit seller",scheduleType:"Order frequency",everyDays:"Every X days",everyMonths:"Every X months",intervalValue:"Interval",nextAutoOrder:"Next automatic order date",lastOrder:"Last order date",autoCreate:"Automatically create a purchase when due",recurringNotes:"Recurring notes"
   }
 };
 
@@ -162,10 +162,7 @@ function orders(){
     <div class="section-title">${t("recurringOrders")}</div>
     <div class="card">
       <div class="small" style="margin-bottom:10px">${t("recurringHint")}</div>
-      ${db.recurring.map(r=>`<div class="list-row" data-recurring="${r.id}">
-        <div><b>${esc(r.product)}</b><div class="small">${sellerName(r.sellerId)||"—"} · ${r.everyWeeks||"?"} ${lang()==="zh"?"周":"weeks"} · ${r.nextOrder||"—"}</div></div>
-        <span class="badge">${r.active===false?t("inactive"):t("active")}</span>
-      </div>`).join("")||`<div class="small">—</div>`}
+      ${db.recurring.map(r=>{const st=r.scheduleType||"weeks",iv=r.intervalValue||r.everyWeeks||"?";const unit=st==="days"?(lang()==="zh"?"天":"days"):st==="months"?(lang()==="zh"?"个月":"months"):(lang()==="zh"?"周":"weeks");return `<div class="list-row" data-recurring="${r.id}"><div><b>${esc(r.product)}</b><div class="small">${sellerName(r.sellerId)||"—"} · ${lang()==="zh"?"每":"Every "}${iv} ${unit} · ${t("nextOrder")}: ${r.nextOrder||"—"}</div></div><span class="badge">${r.active===false?t("inactive"):t("active")}</span></div>`;}).join("")||`<div class="small">—</div>`}
       <button class="secondary" style="margin-top:12px;width:100%" data-action="new-recurring">${t("addRecurring")}</button>
     </div>
   </div><button class="fab" data-action="new-order">+</button>`;
@@ -204,7 +201,7 @@ function settings(){
     </div>
 
     <div class="card"><div class="section-title" style="margin-top:0">${t("sellers")}</div>
-      ${db.sellers.map(s=>`<div class="list-row"><div><b>${esc(s.name)}</b><div class="small">${esc(s.defaultPickup||"—")}</div></div><button class="danger" data-delete-seller="${s.id}">${t("delete")}</button></div>`).join("")||`<div class="small">${t("noSeller")}</div>`}
+      ${db.sellers.map(s=>`<div class="list-row"><div data-edit-seller="${s.id}" style="cursor:pointer"><b>${esc(s.name)}</b><div class="small">${esc(s.defaultPickup||"—")}</div></div><div style="display:flex;gap:6px;flex:0 0 auto"><button class="secondary" data-edit-seller="${s.id}">${t("editSeller")}</button><button class="danger" data-delete-seller="${s.id}">${t("delete")}</button></div></div>`).join("")||`<div class="small">${t("noSeller")}</div>`}
     </div>
 
     <div class="card">
@@ -243,22 +240,28 @@ function orderModal(editId=null){
     <div class="row" style="margin-top:14px"><button class="secondary" data-action="close">${t("cancel")}</button><button class="primary" data-save-order="${editId||""}">${t("save")}</button></div>
   </div></div>`;
 }
-function sellerModal(){
-  return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${t("addSeller")}</h2>
-    <label>${t("sellerName")}</label><input id="s-name">
-    <label>${t("defaultPickup")}</label><input id="s-address">
-    <div class="row" style="margin-top:14px"><button class="secondary" data-action="close">${t("cancel")}</button><button class="primary" data-save-seller>${t("save")}</button></div>
+function sellerModal(editId=null){
+  const s=editId?db.sellers.find(x=>x.id===editId):{name:"",defaultPickup:""};
+  return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${editId?t("editSeller"):t("addSeller")}</h2>
+    <label>${t("sellerName")}</label><input id="s-name" value="${esc(s.name)}">
+    <label>${t("defaultPickup")}</label><input id="s-address" value="${esc(s.defaultPickup||"")}">
+    <div class="row" style="margin-top:14px"><button class="secondary" data-action="close">${t("cancel")}</button><button class="primary" data-save-seller="${editId||""}">${t("save")}</button></div>
   </div></div>`;
 }
 function recurringModal(editId=null){
-  const r=editId?db.recurring.find(x=>x.id===editId):{product:"",sellerId:"",price:"",currency:"CAD",everyWeeks:"4",nextOrder:"",active:true};
+  const r=editId?db.recurring.find(x=>x.id===editId):{product:"",sellerId:"",price:"",currency:"CAD",scheduleType:"weeks",intervalValue:"4",nextOrder:"",lastOrder:"",active:true,autoCreate:true,notes:""};
+  const scheduleType=r.scheduleType||"weeks";
+  const intervalValue=r.intervalValue||r.everyWeeks||"4";
   return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${t("addRecurring")}</h2>
     <label>${t("item")}</label><input id="r-product" value="${esc(r.product)}">
     <label>${t("seller")}</label><select id="r-seller"><option value="">—</option>${db.sellers.map(s=>`<option value="${s.id}" ${r.sellerId===s.id?"selected":""}>${esc(s.name)}</option>`).join("")}</select>
     <div class="row"><div><label>${t("price")}</label><input id="r-price" value="${esc(r.price)}"></div><div><label>${t("currency")}</label><select id="r-currency">${["CAD","CNY","USD"].map(c=>`<option ${r.currency===c?"selected":""}>${c}</option>`).join("")}</select></div></div>
-    <label>${t("everyWeeks")}</label><input id="r-weeks" inputmode="numeric" value="${esc(r.everyWeeks)}">
-    <label>${t("nextOrder")}</label><input id="r-next" type="date" value="${esc(r.nextOrder)}">
+    <label>${t("scheduleType")}</label><select id="r-schedule-type"><option value="days" ${scheduleType==="days"?"selected":""}>${t("everyDays")}</option><option value="weeks" ${scheduleType==="weeks"?"selected":""}>${t("everyWeeks")}</option><option value="months" ${scheduleType==="months"?"selected":""}>${t("everyMonths")}</option></select>
+    <label>${t("intervalValue")}</label><input id="r-interval" inputmode="numeric" min="1" value="${esc(intervalValue)}">
+    <div class="row"><div><label>${t("lastOrder")}</label><input id="r-last" type="date" value="${esc(r.lastOrder||"")}"></div><div><label>${t("nextAutoOrder")}</label><input id="r-next" type="date" value="${esc(r.nextOrder||"")}"></div></div>
     <label><input id="r-active" type="checkbox" style="width:auto;margin-right:8px" ${r.active!==false?"checked":""}>${t("active")}</label>
+    <label><input id="r-auto-create" type="checkbox" style="width:auto;margin-right:8px" ${r.autoCreate!==false?"checked":""}>${t("autoCreate")}</label>
+    <label>${t("recurringNotes")}</label><textarea id="r-notes">${esc(r.notes||"")}</textarea>
     <div class="row" style="margin-top:14px"><button class="secondary" data-action="close">${t("cancel")}</button><button class="primary" data-save-recurring="${editId||""}">${t("save")}</button></div>
   </div></div>`;
 }
@@ -275,8 +278,10 @@ function detailModal(id){
 }
 function recurringDetailModal(id){
   const r=db.recurring.find(x=>x.id===id);
+  const st=r.scheduleType||"weeks",iv=r.intervalValue||r.everyWeeks||"?";
+  const unit=st==="days"?(lang()==="zh"?"天":"days"):st==="months"?(lang()==="zh"?"个月":"months"):(lang()==="zh"?"周":"weeks");
   return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${esc(r.product)}</h2>
-    <div class="card"><b>${sellerName(r.sellerId)||"—"}</b><div class="small">${r.currency} ${r.price||"—"} · ${r.everyWeeks||"?"} ${lang()==="zh"?"周":"weeks"} · ${r.nextOrder||"—"}</div></div>
+    <div class="card"><b>${sellerName(r.sellerId)||"—"}</b><div class="small">${r.currency} ${r.price||"—"} · ${lang()==="zh"?"每":"Every "}${iv} ${unit}</div><div class="small">${t("lastOrder")}: ${r.lastOrder||"—"}</div><div class="small">${t("nextAutoOrder")}: ${r.nextOrder||"—"}</div><div class="small">${t("autoCreate")}: ${r.autoCreate===false?(lang()==="zh"?"否":"No"):(lang()==="zh"?"是":"Yes")}</div>${r.notes?`<div class="small" style="margin-top:6px">${esc(r.notes)}</div>`:""}</div>
     <div class="row"><button class="secondary" data-edit-recurring="${r.id}">${t("editDetails")}</button><button class="danger" data-delete-recurring="${r.id}">${t("delete")}</button></div>
   </div></div>`;
 }
@@ -306,6 +311,7 @@ document.addEventListener("click",e=>{
   if(a==="new-order"){modal=orderModal();render();return}
   if(a==="new-recurring"){modal=recurringModal();render();return}
   if(a==="sellers"){modal=sellerModal();render();return}
+  const es=e.target.closest("[data-edit-seller]");if(es){modal=sellerModal(es.dataset.editSeller);render();return}
   if(a==="export-backup"){exportBackup();return}
   if(a==="import-backup"){document.getElementById("backup-file")?.click();return}
   if(a==="close"){modal=null;render();return}
@@ -318,9 +324,12 @@ document.addEventListener("click",e=>{
   const del=e.target.closest("[data-delete-order]");if(del){db.orders=db.orders.filter(o=>o.id!==del.dataset.deleteOrder);save();modal=null;render();return}
   const dr=e.target.closest("[data-delete-recurring]");if(dr){db.recurring=db.recurring.filter(r=>r.id!==dr.dataset.deleteRecurring);save();modal=null;render();return}
   const ds=e.target.closest("[data-delete-seller]");if(ds){db.sellers=db.sellers.filter(s=>s.id!==ds.dataset.deleteSeller);save();render();return}
-  if(e.target.closest("[data-save-seller]")){
+  const ss=e.target.closest("[data-save-seller]");if(ss){
     const name=document.getElementById("s-name").value.trim();if(!name)return;
-    db.sellers.push({id:crypto.randomUUID(),name,defaultPickup:document.getElementById("s-address").value.trim()});save();modal=null;render();return
+    const data={name,defaultPickup:document.getElementById("s-address").value.trim()};
+    const id=ss.dataset.saveSeller;
+    if(id){Object.assign(db.sellers.find(s=>s.id===id),data)}else{db.sellers.push({id:crypto.randomUUID(),...data})}
+    save();modal=null;render();return
   }
   const so=e.target.closest("[data-save-order]");if(so){
     const id=so.dataset.saveOrder;
@@ -339,9 +348,7 @@ document.addEventListener("click",e=>{
   }
   const sr=e.target.closest("[data-save-recurring]");if(sr){
     const id=sr.dataset.saveRecurring;
-    const data={product:document.getElementById("r-product").value.trim(),sellerId:document.getElementById("r-seller").value||null,
-      price:document.getElementById("r-price").value.trim(),currency:document.getElementById("r-currency").value,
-      everyWeeks:document.getElementById("r-weeks").value.trim(),nextOrder:document.getElementById("r-next").value,active:document.getElementById("r-active").checked};
+    const data={product:document.getElementById("r-product").value.trim(),sellerId:document.getElementById("r-seller").value||null,price:document.getElementById("r-price").value.trim(),currency:document.getElementById("r-currency").value,scheduleType:document.getElementById("r-schedule-type").value,intervalValue:document.getElementById("r-interval").value.trim()||"1",lastOrder:document.getElementById("r-last").value,nextOrder:document.getElementById("r-next").value,active:document.getElementById("r-active").checked,autoCreate:document.getElementById("r-auto-create").checked,notes:document.getElementById("r-notes").value.trim()};
     if(!data.product)return;
     if(id)Object.assign(db.recurring.find(r=>r.id===id),data);else db.recurring.unshift({id:crypto.randomUUID(),...data});
     save();modal=null;render();return
