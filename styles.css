@@ -53,3 +53,25 @@ textarea{min-height:80px;resize:vertical}
 .close{float:right;border:0;background:var(--card);color:var(--ink);border-radius:50%;width:34px;height:34px}
 .timeline{border-left:2px solid var(--line);margin-left:9px;padding-left:18px}.step{position:relative;padding:4px 0 16px}.step:before{content:"";position:absolute;left:-24px;top:7px;width:10px;height:10px;border-radius:50%;background:var(--line)}.step.done:before{background:var(--accent)}
 .hidden{display:none}
+
+.seller-edit-card{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto;
+  gap:8px;
+  align-items:center;
+  padding:12px 0;
+  border-bottom:1px solid var(--line);
+}
+.seller-edit-card:last-child{border-bottom:0}
+.seller-main{min-width:0;cursor:pointer}
+.seller-name{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seller-edit-btn,.seller-delete-btn{
+  border:0;border-radius:11px;padding:9px 10px;font-weight:800;white-space:nowrap
+}
+.seller-edit-btn{background:var(--accent-soft);color:var(--accent)}
+.seller-delete-btn{background:#FCE9E6;color:var(--danger);min-width:42px}
+@media(max-width:390px){
+  .seller-edit-card{grid-template-columns:minmax(0,1fr) auto}
+  .seller-delete-btn{grid-column:2}
+  .seller-edit-btn{grid-column:2}
+}
