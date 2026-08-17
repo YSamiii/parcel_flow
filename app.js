@@ -167,9 +167,37 @@ function detailModal(id){
   const o=db.orders.find(x=>x.id===id), sn=sellerName(o.sellerId);
   const idx=STATUS.indexOf(o.status);
   return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${esc(o.product)}</h2>
-    <div class="card"><b>${sn||"—"}</b><div class="small">${o.currency} ${o.price||"—"} · ${statusLabel(o.status)}</div><div class="small">${o.address||db.sellers.find(s=>s.id===o.sellerId)?.defaultPickup||""}</div></div>
-    <div class="section-title">${t("timeline")}</div><div class="timeline">${STATUS.slice(0,STATUS.indexOf("pickedUp")+1).filter(s=>["orderPlaced","notWarehoused","warehoused","awaitingPack","awaitingShip","sailed","arrivedPort","train","awaitingLocalDelivery","awaitingPickup","pickedUp"].includes(s)).map(s=>`<div class="step ${STATUS.indexOf(s)<=idx?"done":""}"><b>${statusLabel(s)}</b></div>`).join("")}</div>
-    <div class="row"><button class="secondary" data-edit-order="${o.id}">${t("addOrder")}</button><button class="danger" data-delete-order="${o.id}">${t("delete")}</button></div>
+    <div class="card">
+      <b>${sn||"—"}</b>
+      <div class="small">${o.currency} ${o.price||"—"}${o.batch?" · "+o.batch:""}</div>
+      <div class="small">${o.address||db.sellers.find(s=>s.id===o.sellerId)?.defaultPickup||""}</div>
+    </div>
+
+    <label>${t("status")}</label>
+    <div class="row">
+      <select id="detail-status">
+        ${STATUS.map(s=>`<option value="${s}" ${o.status===s?"selected":""}>${statusLabel(s)}</option>`).join("")}
+      </select>
+      <button class="primary" data-update-status="${o.id}">${t("save")}</button>
+    </div>
+
+    <div class="section-title">${t("timeline")}</div>
+    <div class="timeline">
+      ${STATUS.slice(0,STATUS.indexOf("pickedUp")+1)
+        .filter(s=>["orderPlaced","notWarehoused","warehoused","awaitingPack","awaitingShip","sailed","arrivedPort","train","awaitingLocalDelivery","awaitingPickup","pickedUp"].includes(s))
+        .map(s=>`<div class="step ${STATUS.indexOf(s)<=idx?"done":""}" data-quick-status="${s}" data-order-id="${o.id}">
+          <b>${statusLabel(s)}</b>
+          ${o.status===s?`<span class="badge" style="margin-left:6px">${lang()==="zh"?"当前":"Current"}</span>`:""}
+        </div>`).join("")}
+    </div>
+    <div class="small" style="margin:-4px 0 14px">
+      ${lang()==="zh"?"可直接点时间线中的状态快速切换。":"Tap a timeline status to switch quickly."}
+    </div>
+
+    <div class="row">
+      <button class="secondary" data-edit-order="${o.id}">${lang()==="zh"?"编辑详情":"Edit details"}</button>
+      <button class="danger" data-delete-order="${o.id}">${t("delete")}</button>
+    </div>
   </div></div>`;
 }
 function esc(v=""){return String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
@@ -189,6 +217,26 @@ document.addEventListener("click",e=>{
   if(a==="close"){modal=null;render();return}
   const ord=e.target.closest("[data-order]"); if(ord){modal=detailModal(ord.dataset.order);render();return}
   const edit=e.target.closest("[data-edit-order]"); if(edit){modal=orderModal(edit.dataset.editOrder);render();return}
+  const us=e.target.closest("[data-update-status]"); if(us){
+    const o=db.orders.find(x=>x.id===us.dataset.updateStatus);
+    if(o){
+      o.status=document.getElementById("detail-status").value;
+      save();
+      modal=detailModal(o.id);
+      render();
+    }
+    return;
+  }
+  const qs=e.target.closest("[data-quick-status]"); if(qs){
+    const o=db.orders.find(x=>x.id===qs.dataset.orderId);
+    if(o){
+      o.status=qs.dataset.quickStatus;
+      save();
+      modal=detailModal(o.id);
+      render();
+    }
+    return;
+  }
   const del=e.target.closest("[data-delete-order]"); if(del){db.orders=db.orders.filter(o=>o.id!==del.dataset.deleteOrder);save();modal=null;render();return}
   const ds=e.target.closest("[data-delete-seller]"); if(ds){db.sellers=db.sellers.filter(s=>s.id!==ds.dataset.deleteSeller);save();render();return}
   const saveSeller=e.target.closest("[data-save-seller]"); if(saveSeller){
