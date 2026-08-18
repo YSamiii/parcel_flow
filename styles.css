@@ -75,3 +75,8 @@ textarea{min-height:80px;resize:vertical}
   .seller-delete-btn{grid-column:2}
   .seller-edit-btn{grid-column:2}
 }
+
+/* Prevent accidental double-tap zoom on mobile while keeping normal scroll/pinch behavior. */
+html, body, button, input, select, textarea, a, [role="button"] {
+  touch-action: manipulation;
+}

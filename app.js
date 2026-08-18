@@ -570,3 +570,6 @@ document.addEventListener("change",e=>{
   db.settings[e.target.id]=e.target.value;save();render()
 });
 render();
+
+// Prevent accidental double-tap/double-click zoom behavior.
+document.addEventListener("dblclick", e=>e.preventDefault(), {passive:false});
