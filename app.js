@@ -386,6 +386,42 @@ function addIntervalToDate(dateStr, scheduleType, intervalValue){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
+
+function ensureRecurringOccurrenceOrder(r, occurrenceDate){
+  if(!r || !occurrenceDate) return false;
+  const duplicate=db.orders.some(o =>
+    o.recurringId===r.id && o.recurringOccurrence===occurrenceDate
+  );
+  if(duplicate) return false;
+
+  db.orders.unshift({
+    id:crypto.randomUUID(),
+    recurringId:r.id,
+    recurringOccurrence:occurrenceDate,
+    product:r.product,
+    sellerId:r.sellerId||null,
+    price:r.price||"",
+    currency:r.currency||"CAD",
+    purchaseType:"autoOrder",
+    deliveryMode:"homeDelivery",
+    finalDelivery:"home",
+    status:"orderPlaced",
+    batch:"",
+    address:"",
+    notes:r.notes||""
+  });
+  return true;
+}
+
+function ensureExistingLastOrderRecords(){
+  let changed=false;
+  db.recurring.forEach(r=>{
+    if(r.createLastRecord===false || !r.lastOrder) return;
+    if(ensureRecurringOccurrenceOrder(r,r.lastOrder)) changed=true;
+  });
+  if(changed) save();
+}
+
 function processDueRecurringOrders(){
   const today=new Date();
   const pad=x=>String(x).padStart(2,"0");
@@ -396,16 +432,7 @@ function processDueRecurringOrders(){
     let guard=0;
     while(r.nextOrder && r.nextOrder<=todayStr && guard<24){
       const occurrenceDate=r.nextOrder;
-      const duplicate=db.orders.some(o=>o.recurringId===r.id && o.recurringOccurrence===occurrenceDate);
-      if(!duplicate){
-        db.orders.unshift({
-          id:crypto.randomUUID(), recurringId:r.id, recurringOccurrence:occurrenceDate,
-          product:r.product, sellerId:r.sellerId||null, price:r.price||"", currency:r.currency||"CAD",
-          purchaseType:"autoOrder", deliveryMode:"homeDelivery", finalDelivery:"home", status:"orderPlaced",
-          batch:"", address:"", notes:r.notes||""
-        });
-        changed=true;
-      }
+      if(ensureRecurringOccurrenceOrder(r,occurrenceDate)) changed=true;
       r.lastOrder=occurrenceDate;
       r.nextOrder=addIntervalToDate(occurrenceDate,r.scheduleType||"weeks",r.intervalValue||r.everyWeeks||"1");
       changed=true; guard++;
@@ -415,6 +442,7 @@ function processDueRecurringOrders(){
 }
 
 function render(){
+  ensureExistingLastOrderRecords();
   processDueRecurringOrders();
   applyTheme();
   let body=tab==="home"?home():tab==="orders"?orders():tab==="packages"?packages():tab==="pickup"?pickup():settings();
