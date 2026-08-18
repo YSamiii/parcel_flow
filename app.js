@@ -16,7 +16,7 @@ const I18N={
     backupHint:"导出完整购物、卖家、自动订购和设置数据；导入会覆盖当前数据。",
     confirmImport:"导入备份会覆盖当前 App 数据，是否继续？",importSuccess:"备份导入成功",invalidBackup:"备份文件无效",
     noOrders:"还没有购物记录",noSeller:"尚未添加卖家",sellerHint:"卖家由你自己添加，App 不预置任何名称。",
-    editDetails:"编辑详情",delete:"删除",timeline:"物流时间线",current:"当前",quickSwitch:"点击时间线中的状态可快速切换。",statusOrder:"状态顺序",forwardOrder:"正序",reverseOrder:"倒序",autoCalcNext:"根据上次下单日期和频率自动计算",manualOverride:"手动修改下次日期",nextDateHint:"填写上次下单日期和频率后，会自动计算下次下单日期。",
+    editDetails:"编辑详情",delete:"删除",timeline:"物流时间线",current:"当前",quickSwitch:"点击时间线中的状态可快速切换。",statusOrder:"状态顺序",forwardOrder:"正序",reverseOrder:"倒序",autoCalcNext:"根据上次下单日期和频率自动计算",manualOverride:"手动修改下次日期",nextDateHint:"填写上次下单日期和频率后，会自动计算下次下单日期。",createLastOrderRecord:"保存时同步生成上次下单的购物记录",lastOrderRecordHint:"例如上次下单为 8 月 17 日，保存后会在购物记录中生成一笔 8 月 17 日的实际订单；下一次仍按频率等待到期。",
     recurringOrders:"自动订购计划",addRecurring:"添加自动订购",frequency:"频率",nextOrder:"下次下单",
     everyWeeks:"每几周",active:"启用",inactive:"停用",deliveryToHome:"默认送货上门",
     packageFilter:"包裹类型",all:"全部",normalParcel:"普通快递",forwardingParcel:"集运",
@@ -47,7 +47,7 @@ const I18N={
     backupHint:"Export purchases, sellers, recurring plans and settings. Importing replaces current data.",
     confirmImport:"Importing a backup will replace current app data. Continue?",importSuccess:"Backup imported",invalidBackup:"Invalid backup file",
     noOrders:"No purchases yet",noSeller:"No sellers yet",sellerHint:"You add your own sellers. The app does not prefill any names.",
-    editDetails:"Edit details",delete:"Delete",timeline:"Shipping timeline",current:"Current",quickSwitch:"Tap a timeline status to switch quickly.",statusOrder:"Status order",forwardOrder:"Forward",reverseOrder:"Reverse",autoCalcNext:"Auto-calculate from last order + frequency",manualOverride:"Manually override next date",nextDateHint:"Enter the last order date and frequency to calculate the next order date automatically.",
+    editDetails:"Edit details",delete:"Delete",timeline:"Shipping timeline",current:"Current",quickSwitch:"Tap a timeline status to switch quickly.",statusOrder:"Status order",forwardOrder:"Forward",reverseOrder:"Reverse",autoCalcNext:"Auto-calculate from last order + frequency",manualOverride:"Manually override next date",nextDateHint:"Enter the last order date and frequency to calculate the next order date automatically.",createLastOrderRecord:"Create a purchase record for the last order date",lastOrderRecordHint:"For example, if the last order was Aug 17, saving creates that actual Aug 17 purchase record. The next order still waits until its due date.",
     recurringOrders:"Recurring orders",addRecurring:"Add recurring",frequency:"Frequency",nextOrder:"Next order",
     everyWeeks:"Every X weeks",active:"Active",inactive:"Inactive",deliveryToHome:"Default home delivery",
     packageFilter:"Package type",all:"All",normalParcel:"Normal parcel",forwardingParcel:"Forwarding",
@@ -93,6 +93,7 @@ db.recurring.forEach(r=>{
   r.scheduleType ||= "weeks";
   r.intervalValue ||= r.everyWeeks || "1";
   if(r.manualNext===undefined) r.manualNext=false;
+  if(r.createLastRecord===undefined) r.createLastRecord=true;
 });
 let tab="home";
 let modal=null;
@@ -326,6 +327,11 @@ function recurringModal(editId=null){
       ${t("manualOverride")}
     </label>
 
+    <label>
+      <input id="r-create-last-record" type="checkbox" style="width:auto;margin-right:8px" ${r.createLastRecord!==false?"checked":""}>
+      ${t("createLastOrderRecord")}
+    </label>
+    <div class="small" style="margin-top:-6px;margin-bottom:8px">${t("lastOrderRecordHint")}</div>
     <label><input id="r-active" type="checkbox" style="width:auto;margin-right:8px" ${r.active!==false?"checked":""}>${t("active")}</label>
     <label><input id="r-auto-create" type="checkbox" style="width:auto;margin-right:8px" ${r.autoCreate!==false?"checked":""}>${t("autoCreate")}</label>
 
@@ -475,12 +481,23 @@ document.addEventListener("click",e=>{
       price:document.getElementById("r-price").value.trim(),
       currency:document.getElementById("r-currency").value,
       scheduleType,intervalValue,lastOrder,nextOrder,manualNext,
+      createLastRecord:document.getElementById("r-create-last-record").checked,
       active:document.getElementById("r-active").checked,
       autoCreate:document.getElementById("r-auto-create").checked,
       notes:document.getElementById("r-notes").value.trim()
     };
     if(!data.product)return;
-    if(id)Object.assign(db.recurring.find(r=>r.id===id),data);else db.recurring.unshift({id:crypto.randomUUID(),...data});
+    let recurringRecord;
+    if(id){
+      recurringRecord=db.recurring.find(r=>r.id===id);
+      Object.assign(recurringRecord,data);
+    }else{
+      recurringRecord={id:crypto.randomUUID(),...data};
+      db.recurring.unshift(recurringRecord);
+    }
+    if(data.createLastRecord && data.lastOrder){
+      ensureRecurringOccurrenceOrder(recurringRecord,data.lastOrder);
+    }
     save();modal=null;render();return
   }
 });
