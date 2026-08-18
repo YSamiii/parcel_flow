@@ -16,7 +16,7 @@ const I18N={
     backupHint:"导出完整购物、卖家、自动订购和设置数据；导入会覆盖当前数据。",
     confirmImport:"导入备份会覆盖当前 App 数据，是否继续？",importSuccess:"备份导入成功",invalidBackup:"备份文件无效",
     noOrders:"还没有购物记录",noSeller:"尚未添加卖家",sellerHint:"卖家由你自己添加，App 不预置任何名称。",
-    editDetails:"编辑详情",delete:"删除",timeline:"物流时间线",current:"当前",quickSwitch:"点击时间线中的状态可快速切换。",statusOrder:"状态顺序",forwardOrder:"正序",reverseOrder:"倒序",
+    editDetails:"编辑详情",delete:"删除",timeline:"物流时间线",current:"当前",quickSwitch:"点击时间线中的状态可快速切换。",statusOrder:"状态顺序",forwardOrder:"正序",reverseOrder:"倒序",autoCalcNext:"根据上次下单日期和频率自动计算",manualOverride:"手动修改下次日期",nextDateHint:"填写上次下单日期和频率后，会自动计算下次下单日期。",
     recurringOrders:"自动订购计划",addRecurring:"添加自动订购",frequency:"频率",nextOrder:"下次下单",
     everyWeeks:"每几周",active:"启用",inactive:"停用",deliveryToHome:"默认送货上门",
     packageFilter:"包裹类型",all:"全部",normalParcel:"普通快递",forwardingParcel:"集运",
@@ -47,7 +47,7 @@ const I18N={
     backupHint:"Export purchases, sellers, recurring plans and settings. Importing replaces current data.",
     confirmImport:"Importing a backup will replace current app data. Continue?",importSuccess:"Backup imported",invalidBackup:"Invalid backup file",
     noOrders:"No purchases yet",noSeller:"No sellers yet",sellerHint:"You add your own sellers. The app does not prefill any names.",
-    editDetails:"Edit details",delete:"Delete",timeline:"Shipping timeline",current:"Current",quickSwitch:"Tap a timeline status to switch quickly.",statusOrder:"Status order",forwardOrder:"Forward",reverseOrder:"Reverse",
+    editDetails:"Edit details",delete:"Delete",timeline:"Shipping timeline",current:"Current",quickSwitch:"Tap a timeline status to switch quickly.",statusOrder:"Status order",forwardOrder:"Forward",reverseOrder:"Reverse",autoCalcNext:"Auto-calculate from last order + frequency",manualOverride:"Manually override next date",nextDateHint:"Enter the last order date and frequency to calculate the next order date automatically.",
     recurringOrders:"Recurring orders",addRecurring:"Add recurring",frequency:"Frequency",nextOrder:"Next order",
     everyWeeks:"Every X weeks",active:"Active",inactive:"Inactive",deliveryToHome:"Default home delivery",
     packageFilter:"Package type",all:"All",normalParcel:"Normal parcel",forwardingParcel:"Forwarding",
@@ -89,6 +89,11 @@ db.settings.statusOrder ||= "forward";
 db.sellers ||= [];
 db.orders ||= [];
 db.recurring ||= [];
+db.recurring.forEach(r=>{
+  r.scheduleType ||= "weeks";
+  r.intervalValue ||= r.everyWeeks || "1";
+  if(r.manualNext===undefined) r.manualNext=false;
+});
 let tab="home";
 let modal=null;
 let packageFilter="all";
@@ -281,19 +286,52 @@ function sellerModal(editId=null){
   </div></div>`;
 }
 function recurringModal(editId=null){
-  const r=editId?db.recurring.find(x=>x.id===editId):{product:"",sellerId:"",price:"",currency:"CAD",scheduleType:"weeks",intervalValue:"4",nextOrder:"",lastOrder:"",active:true,autoCreate:true,notes:""};
+  const r=editId?db.recurring.find(x=>x.id===editId):{
+    product:"",sellerId:"",price:"",currency:"CAD",
+    scheduleType:"weeks",intervalValue:"4",
+    nextOrder:"",lastOrder:"",active:true,autoCreate:true,notes:"",manualNext:false
+  };
   const scheduleType=r.scheduleType||"weeks";
   const intervalValue=r.intervalValue||r.everyWeeks||"4";
+  const computedNext=(!r.manualNext && r.lastOrder)
+    ? addIntervalToDate(r.lastOrder,scheduleType,intervalValue)
+    : (r.nextOrder||"");
   return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${t("addRecurring")}</h2>
     <label>${t("item")}</label><input id="r-product" value="${esc(r.product)}">
     <label>${t("seller")}</label><select id="r-seller"><option value="">—</option>${db.sellers.map(s=>`<option value="${s.id}" ${r.sellerId===s.id?"selected":""}>${esc(s.name)}</option>`).join("")}</select>
-    <div class="row"><div><label>${t("price")}</label><input id="r-price" value="${esc(r.price)}"></div><div><label>${t("currency")}</label><select id="r-currency">${["CAD","CNY","USD"].map(c=>`<option ${r.currency===c?"selected":""}>${c}</option>`).join("")}</select></div></div>
-    <label>${t("scheduleType")}</label><select id="r-schedule-type"><option value="days" ${scheduleType==="days"?"selected":""}>${t("everyDays")}</option><option value="weeks" ${scheduleType==="weeks"?"selected":""}>${t("everyWeeks")}</option><option value="months" ${scheduleType==="months"?"selected":""}>${t("everyMonths")}</option></select>
-    <label>${t("intervalValue")}</label><input id="r-interval" inputmode="numeric" min="1" value="${esc(intervalValue)}">
-    <div class="row"><div><label>${t("lastOrder")}</label><input id="r-last" type="date" value="${esc(r.lastOrder||"")}"></div><div><label>${t("nextAutoOrder")}</label><input id="r-next" type="date" value="${esc(r.nextOrder||"")}"></div></div>
+    <div class="row">
+      <div><label>${t("price")}</label><input id="r-price" value="${esc(r.price)}"></div>
+      <div><label>${t("currency")}</label><select id="r-currency">${["CAD","CNY","USD"].map(c=>`<option ${r.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
+    </div>
+
+    <label>${t("scheduleType")}</label>
+    <select id="r-schedule-type">
+      <option value="days" ${scheduleType==="days"?"selected":""}>${t("everyDays")}</option>
+      <option value="weeks" ${scheduleType==="weeks"?"selected":""}>${t("everyWeeks")}</option>
+      <option value="months" ${scheduleType==="months"?"selected":""}>${t("everyMonths")}</option>
+    </select>
+
+    <label>${t("intervalValue")}</label>
+    <input id="r-interval" inputmode="numeric" min="1" value="${esc(intervalValue)}">
+
+    <label>${t("lastOrder")}</label>
+    <input id="r-last" type="date" value="${esc(r.lastOrder||"")}">
+
+    <label>${t("nextAutoOrder")}</label>
+    <input id="r-next" type="date" value="${esc(computedNext)}" ${r.manualNext?"":"readonly"}>
+    <div class="small" style="margin-top:5px">${t("nextDateHint")}</div>
+
+    <label style="margin-top:10px">
+      <input id="r-manual-next" type="checkbox" style="width:auto;margin-right:8px" ${r.manualNext?"checked":""}>
+      ${t("manualOverride")}
+    </label>
+
     <label><input id="r-active" type="checkbox" style="width:auto;margin-right:8px" ${r.active!==false?"checked":""}>${t("active")}</label>
     <label><input id="r-auto-create" type="checkbox" style="width:auto;margin-right:8px" ${r.autoCreate!==false?"checked":""}>${t("autoCreate")}</label>
-    <label>${t("recurringNotes")}</label><textarea id="r-notes">${esc(r.notes||"")}</textarea>
+
+    <label>${t("recurringNotes")}</label>
+    <textarea id="r-notes">${esc(r.notes||"")}</textarea>
+
     <div class="row" style="margin-top:14px"><button class="secondary" data-action="close">${t("cancel")}</button><button class="primary" data-save-recurring="${editId||""}">${t("save")}</button></div>
   </div></div>`;
 }
@@ -423,7 +461,24 @@ document.addEventListener("click",e=>{
   }
   const sr=e.target.closest("[data-save-recurring]");if(sr){
     const id=sr.dataset.saveRecurring;
-    const data={product:document.getElementById("r-product").value.trim(),sellerId:document.getElementById("r-seller").value||null,price:document.getElementById("r-price").value.trim(),currency:document.getElementById("r-currency").value,scheduleType:document.getElementById("r-schedule-type").value,intervalValue:document.getElementById("r-interval").value.trim()||"1",lastOrder:document.getElementById("r-last").value,nextOrder:document.getElementById("r-next").value,active:document.getElementById("r-active").checked,autoCreate:document.getElementById("r-auto-create").checked,notes:document.getElementById("r-notes").value.trim()};
+    const scheduleType=document.getElementById("r-schedule-type").value;
+    const intervalValue=document.getElementById("r-interval").value.trim()||"1";
+    const lastOrder=document.getElementById("r-last").value;
+    const manualNext=document.getElementById("r-manual-next").checked;
+    const nextOrder=manualNext
+      ? document.getElementById("r-next").value
+      : addIntervalToDate(lastOrder,scheduleType,intervalValue);
+
+    const data={
+      product:document.getElementById("r-product").value.trim(),
+      sellerId:document.getElementById("r-seller").value||null,
+      price:document.getElementById("r-price").value.trim(),
+      currency:document.getElementById("r-currency").value,
+      scheduleType,intervalValue,lastOrder,nextOrder,manualNext,
+      active:document.getElementById("r-active").checked,
+      autoCreate:document.getElementById("r-auto-create").checked,
+      notes:document.getElementById("r-notes").value.trim()
+    };
     if(!data.product)return;
     if(id)Object.assign(db.recurring.find(r=>r.id===id),data);else db.recurring.unshift({id:crypto.randomUUID(),...data});
     save();modal=null;render();return
@@ -431,6 +486,30 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("change",e=>{
   if(e.target.id==="backup-file"){importBackupFile(e.target.files?.[0]);e.target.value="";return}
+  if(["r-last","r-schedule-type","r-interval"].includes(e.target.id)){
+    const manual=document.getElementById("r-manual-next")?.checked;
+    if(!manual){
+      const last=document.getElementById("r-last")?.value||"";
+      const st=document.getElementById("r-schedule-type")?.value||"weeks";
+      const iv=document.getElementById("r-interval")?.value||"1";
+      const next=document.getElementById("r-next");
+      if(next) next.value=addIntervalToDate(last,st,iv);
+    }
+    return;
+  }
+  if(e.target.id==="r-manual-next"){
+    const next=document.getElementById("r-next");
+    if(next){
+      next.readOnly=!e.target.checked;
+      if(!e.target.checked){
+        const last=document.getElementById("r-last")?.value||"";
+        const st=document.getElementById("r-schedule-type")?.value||"weeks";
+        const iv=document.getElementById("r-interval")?.value||"1";
+        next.value=addIntervalToDate(last,st,iv);
+      }
+    }
+    return;
+  }
   if(e.target.id==="o-delivery"){
     const oldStatus=document.getElementById("o-status")?.value;
     const temp={deliveryMode:e.target.value,finalDelivery:document.getElementById("o-final")?.value||"pickup"};
