@@ -16,7 +16,7 @@ const I18N={
     backupHint:"导出完整购物、卖家、自动订购和设置数据；导入会覆盖当前数据。",
     confirmImport:"导入备份会覆盖当前 App 数据，是否继续？",importSuccess:"备份导入成功",invalidBackup:"备份文件无效",
     noOrders:"还没有购物记录",noSeller:"尚未添加卖家",sellerHint:"卖家由你自己添加，App 不预置任何名称。",
-    editDetails:"编辑详情",delete:"删除",timeline:"物流时间线",current:"当前",quickSwitch:"点击时间线中的状态可快速切换。",
+    editDetails:"编辑详情",delete:"删除",timeline:"物流时间线",current:"当前",quickSwitch:"点击时间线中的状态可快速切换。",statusOrder:"状态顺序",forwardOrder:"正序",reverseOrder:"倒序",
     recurringOrders:"自动订购计划",addRecurring:"添加自动订购",frequency:"频率",nextOrder:"下次下单",
     everyWeeks:"每几周",active:"启用",inactive:"停用",deliveryToHome:"默认送货上门",
     packageFilter:"包裹类型",all:"全部",normalParcel:"普通快递",forwardingParcel:"集运",
@@ -28,7 +28,7 @@ const I18N={
     localWarehouse:"到达本地仓",awaitingLocalDelivery:"待送取货点",awaitingPickup:"已到取货点 / 待取",
     pickedUp:"已取",waitingPickup:"待领取",collected:"已领取",deliveryFailed:"配送失败",
     refunded:"已退款",cancelled:"已取消",shippingMode:"运输方式",orderStatus:"订单状态",
-    logisticsStatus:"物流状态",recurringHint:"自动订购计划是模板；每次真正下单后仍会生成一笔实际购物记录。",
+    logisticsStatus:"物流状态",recurringHint:"到期后会在你打开或刷新 App 时自动生成一笔实际购物记录，并自动推进到下一次下单日期。由于这是本地 PWA，App 完全关闭时不会在后台自行运行。",
     tempDoesNotChange:"临时地址只影响这笔购物，不修改卖家默认地址。",editSeller:"修改卖家",scheduleType:"订购频率",everyDays:"每 X 天",everyMonths:"每 X 个月",intervalValue:"间隔",nextAutoOrder:"下次自动下单日期",lastOrder:"上次下单日期",autoCreate:"到期时自动生成购物记录",recurringNotes:"订购备注"
   },
   en:{
@@ -47,7 +47,7 @@ const I18N={
     backupHint:"Export purchases, sellers, recurring plans and settings. Importing replaces current data.",
     confirmImport:"Importing a backup will replace current app data. Continue?",importSuccess:"Backup imported",invalidBackup:"Invalid backup file",
     noOrders:"No purchases yet",noSeller:"No sellers yet",sellerHint:"You add your own sellers. The app does not prefill any names.",
-    editDetails:"Edit details",delete:"Delete",timeline:"Shipping timeline",current:"Current",quickSwitch:"Tap a timeline status to switch quickly.",
+    editDetails:"Edit details",delete:"Delete",timeline:"Shipping timeline",current:"Current",quickSwitch:"Tap a timeline status to switch quickly.",statusOrder:"Status order",forwardOrder:"Forward",reverseOrder:"Reverse",
     recurringOrders:"Recurring orders",addRecurring:"Add recurring",frequency:"Frequency",nextOrder:"Next order",
     everyWeeks:"Every X weeks",active:"Active",inactive:"Inactive",deliveryToHome:"Default home delivery",
     packageFilter:"Package type",all:"All",normalParcel:"Normal parcel",forwardingParcel:"Forwarding",
@@ -59,7 +59,7 @@ const I18N={
     localWarehouse:"Local warehouse",awaitingLocalDelivery:"Waiting for pickup-point delivery",awaitingPickup:"Ready for pickup",
     pickedUp:"Picked up",waitingPickup:"Waiting to collect",collected:"Collected",deliveryFailed:"Delivery failed",
     refunded:"Refunded",cancelled:"Cancelled",shippingMode:"Shipping method",orderStatus:"Order status",
-    logisticsStatus:"Logistics status",recurringHint:"Recurring plans are templates; each actual order is still saved as a purchase.",
+    logisticsStatus:"Logistics status",recurringHint:"When due, a purchase is generated automatically the next time you open or refresh the app, then the next order date advances. This local PWA does not run while fully closed.",
     tempDoesNotChange:"A temporary address only applies to this purchase.",editSeller:"Edit seller",scheduleType:"Order frequency",everyDays:"Every X days",everyMonths:"Every X months",intervalValue:"Interval",nextAutoOrder:"Next automatic order date",lastOrder:"Last order date",autoCreate:"Automatically create a purchase when due",recurringNotes:"Recurring notes"
   }
 };
@@ -73,7 +73,7 @@ const FLOW={
 };
 
 const seed={
-  settings:{language:"system",appearance:"system",palette:"cream"},
+  settings:{language:"system",appearance:"system",palette:"cream",statusOrder:"forward"},
   sellers:[],
   recurring:[],
   orders:[
@@ -85,6 +85,7 @@ const seed={
 
 let db=JSON.parse(localStorage.getItem("parcelflow-db")||"null")||seed;
 db.settings ||= seed.settings;
+db.settings.statusOrder ||= "forward";
 db.sellers ||= [];
 db.orders ||= [];
 db.recurring ||= [];
@@ -132,21 +133,23 @@ function orderHtml(o){
   </div>`;
 }
 function groupedStatus(orders){
-  // Keep every supported status visible. Unknown/custom statuses are appended automatically
-  // so a package can never "disappear" just because a new status was added later.
-  const statusOrder=[
-    "deliveryFailed","pendingPayment","orderPlaced","paid",
-    "awaitingShip","shipped","inTransitStatus","outForDelivery",
-    "notWarehoused","warehoused","awaitingPack","awaitingSail",
-    "sailed","atSea","arrivedPort","customs","train","localWarehouse",
-    "awaitingLocalDelivery","awaitingPickup","waitingPickup",
+  // Logical forward order: from early purchase/fulfillment stages to completion.
+  // Reverse simply flips this sequence.
+  const forwardStatusOrder=[
+    "pendingPayment","orderPlaced","paid","awaitingShip","shipped","inTransitStatus",
+    "notWarehoused","warehoused","awaitingPack","awaitingSail","sailed","atSea",
+    "arrivedPort","customs","train","localWarehouse","awaitingLocalDelivery",
+    "outForDelivery","awaitingPickup","waitingPickup","deliveryFailed",
     "delivered","pickedUp","collected","refunded","cancelled"
   ];
   const present=[...new Set(orders.map(o=>o.status).filter(Boolean))];
-  const allStatuses=[
-    ...statusOrder.filter(s=>present.includes(s)),
-    ...present.filter(s=>!statusOrder.includes(s))
-  ];
+  let known=forwardStatusOrder.filter(s=>present.includes(s));
+  if(db.settings.statusOrder==="reverse") known=[...known].reverse();
+
+  // Unknown/custom statuses stay visible at the end so records never disappear.
+  const unknown=present.filter(s=>!forwardStatusOrder.includes(s));
+  const allStatuses=[...known,...unknown];
+
   return allStatuses.map(s=>{
     const arr=orders.filter(o=>o.status===s);
     if(!arr.length)return "";
@@ -167,6 +170,10 @@ function home(){
       <div class="stat"><b>${recurring}</b><span>${t("recurring")}</span></div>
     </div>
     <div class="section-title">${t("byStatus")}</div>
+    <div class="segment" style="margin-bottom:12px">
+      <button class="${db.settings.statusOrder==="forward"?"on":""}" data-status-order="forward">${t("forwardOrder")}</button>
+      <button class="${db.settings.statusOrder==="reverse"?"on":""}" data-status-order="reverse">${t("reverseOrder")}</button>
+    </div>
     ${groupedStatus(active)||`<div class="empty">${t("noOrders")}</div>`}
   </div><button class="fab" data-action="new-order">+</button>`;
 }
@@ -190,6 +197,10 @@ function packages(){
       <button class="${packageFilter==="all"?"on":""}" data-package-filter="all">${t("all")}</button>
       <button class="${packageFilter==="normal"?"on":""}" data-package-filter="normal">${t("normalParcel")}</button>
       <button class="${packageFilter==="forwarding"?"on":""}" data-package-filter="forwarding">${t("forwardingParcel")}</button>
+    </div>
+    <div class="segment" style="margin-top:10px">
+      <button class="${db.settings.statusOrder==="forward"?"on":""}" data-status-order="forward">${t("forwardOrder")}</button>
+      <button class="${db.settings.statusOrder==="reverse"?"on":""}" data-status-order="reverse">${t("reverseOrder")}</button>
     </div>
     ${groupedStatus(arr)||`<div class="empty">${t("noOrders")}</div>`}
   </div>`;
@@ -319,7 +330,48 @@ function importBackupFile(file){
   reader.onload=()=>{try{const parsed=JSON.parse(reader.result);if(!isValidBackup(parsed))throw new Error("invalid");if(!confirm(t("confirmImport")))return;db=parsed.data||parsed;db.recurring ||= [];save();modal=null;render();setTimeout(()=>alert(t("importSuccess")),50)}catch(e){alert(t("invalidBackup"))}};
   reader.readAsText(file);
 }
+
+function addIntervalToDate(dateStr, scheduleType, intervalValue){
+  if(!dateStr)return "";
+  const d=new Date(dateStr+"T12:00:00");
+  const n=Math.max(1,parseInt(intervalValue||"1",10)||1);
+  if(scheduleType==="days") d.setDate(d.getDate()+n);
+  else if(scheduleType==="months") d.setMonth(d.getMonth()+n);
+  else d.setDate(d.getDate()+n*7);
+  const pad=x=>String(x).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
+function processDueRecurringOrders(){
+  const today=new Date();
+  const pad=x=>String(x).padStart(2,"0");
+  const todayStr=`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+  let changed=false;
+  db.recurring.forEach(r=>{
+    if(r.active===false || r.autoCreate===false || !r.nextOrder) return;
+    let guard=0;
+    while(r.nextOrder && r.nextOrder<=todayStr && guard<24){
+      const occurrenceDate=r.nextOrder;
+      const duplicate=db.orders.some(o=>o.recurringId===r.id && o.recurringOccurrence===occurrenceDate);
+      if(!duplicate){
+        db.orders.unshift({
+          id:crypto.randomUUID(), recurringId:r.id, recurringOccurrence:occurrenceDate,
+          product:r.product, sellerId:r.sellerId||null, price:r.price||"", currency:r.currency||"CAD",
+          purchaseType:"autoOrder", deliveryMode:"homeDelivery", finalDelivery:"home", status:"orderPlaced",
+          batch:"", address:"", notes:r.notes||""
+        });
+        changed=true;
+      }
+      r.lastOrder=occurrenceDate;
+      r.nextOrder=addIntervalToDate(occurrenceDate,r.scheduleType||"weeks",r.intervalValue||r.everyWeeks||"1");
+      changed=true; guard++;
+    }
+  });
+  if(changed) save();
+}
+
 function render(){
+  processDueRecurringOrders();
   applyTheme();
   let body=tab==="home"?home():tab==="orders"?orders():tab==="packages"?packages():tab==="pickup"?pickup():settings();
   document.getElementById("app").innerHTML=body+nav()+(modal||"");
@@ -328,6 +380,7 @@ function render(){
 document.addEventListener("click",e=>{
   const tb=e.target.closest("[data-tab]");if(tb){tab=tb.dataset.tab;modal=null;render();return}
   const pf=e.target.closest("[data-package-filter]");if(pf){packageFilter=pf.dataset.packageFilter;render();return}
+  const soBtn=e.target.closest("[data-status-order]");if(soBtn){db.settings.statusOrder=soBtn.dataset.statusOrder;save();render();return}
   const a=e.target.closest("[data-action]")?.dataset.action;
   if(a==="new-order"){modal=orderModal();render();return}
   if(a==="new-recurring"){modal=recurringModal();render();return}
