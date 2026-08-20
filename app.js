@@ -467,7 +467,7 @@ document.addEventListener("click",e=>{
   const rr=e.target.closest("[data-recurring]");if(rr){modal=recurringDetailModal(rr.dataset.recurring);render();return}
   const edit=e.target.closest("[data-edit-order]");if(edit){modal=orderModal(edit.dataset.editOrder);render();return}
   const er=e.target.closest("[data-edit-recurring]");if(er){modal=recurringModal(er.dataset.editRecurring);render();return}
-  const us=e.target.closest("[data-update-status]");if(us){const o=db.orders.find(x=>x.id===us.dataset.updateStatus);if(o){o.status=document.getElementById("detail-status").value;save();modal=detailModal(o.id);render()}return}
+  const us=e.target.closest("[data-update-status]");if(us){const o=db.orders.find(x=>x.id===us.dataset.updateStatus);if(o){o.status=document.getElementById("detail-status").value;save();modal=null;render()}return}
   const qs=e.target.closest("[data-quick-status]");if(qs){const o=db.orders.find(x=>x.id===qs.dataset.orderId);if(o){o.status=qs.dataset.quickStatus;save();modal=detailModal(o.id);render()}return}
   const del=e.target.closest("[data-delete-order]");if(del){db.orders=db.orders.filter(o=>o.id!==del.dataset.deleteOrder);save();modal=null;render();return}
   const dr=e.target.closest("[data-delete-recurring]");if(dr){db.recurring=db.recurring.filter(r=>r.id!==dr.dataset.deleteRecurring);save();modal=null;render();return}
