@@ -263,7 +263,17 @@ function orderModal(editId=null){
   const o=editId?db.orders.find(x=>x.id===editId):{product:"",sellerId:"",price:"",currency:"CAD",purchaseType:"online",deliveryMode:"homeDelivery",finalDelivery:"home",status:"orderPlaced",batch:"",address:"",notes:""};
   return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${t("newPurchase")}</h2>
     <label>${t("item")}</label><input id="o-product" value="${esc(o.product)}">
-    <label>${t("seller")}</label><select id="o-seller"><option value="">—</option>${db.sellers.map(s=>`<option value="${s.id}" ${o.sellerId===s.id?"selected":""}>${esc(s.name)}</option>`).join("")}</select>
+    <label>${t("seller")}</label>
+    <select id="o-seller">
+      <option value="">—</option>
+      ${db.sellers.map(s=>`<option value="${s.id}" ${o.sellerId===s.id?"selected":""}>${esc(s.name)}</option>`).join("")}
+      <option value="__add__">${t("addSellerInline")}</option>
+    </select>
+    <div id="o-inline-seller" class="hidden">
+      <label>${t("newSellerName")}</label><input id="o-new-seller-name">
+      <label>${t("newSellerDefaultPickup")}</label><input id="o-new-seller-address">
+      <div class="small" style="margin-top:5px">${t("newSellerHint")}</div>
+    </div>
     <div class="row"><div><label>${t("price")}</label><input id="o-price" inputmode="decimal" value="${esc(o.price)}"></div><div><label>${t("currency")}</label><select id="o-currency">${["CAD","CNY","USD"].map(c=>`<option ${o.currency===c?"selected":""}>${c}</option>`).join("")}</select></div></div>
     <label>${t("purchaseType")}</label><select id="o-purchase-type">${purchaseTypeOptions(o.purchaseType)}</select>
     <label>${t("deliveryMode")}</label><select id="o-delivery">${deliveryOptions(o.deliveryMode)}</select>
@@ -299,7 +309,17 @@ function recurringModal(editId=null){
     : (r.nextOrder||"");
   return `<div class="modal"><div class="sheet"><button class="close" data-action="close">×</button><h2>${t("addRecurring")}</h2>
     <label>${t("item")}</label><input id="r-product" value="${esc(r.product)}">
-    <label>${t("seller")}</label><select id="r-seller"><option value="">—</option>${db.sellers.map(s=>`<option value="${s.id}" ${r.sellerId===s.id?"selected":""}>${esc(s.name)}</option>`).join("")}</select>
+    <label>${t("seller")}</label>
+    <select id="r-seller">
+      <option value="">—</option>
+      ${db.sellers.map(s=>`<option value="${s.id}" ${r.sellerId===s.id?"selected":""}>${esc(s.name)}</option>`).join("")}
+      <option value="__add__">${t("addSellerInline")}</option>
+    </select>
+    <div id="r-inline-seller" class="hidden">
+      <label>${t("newSellerName")}</label><input id="r-new-seller-name">
+      <label>${t("newSellerDefaultPickup")}</label><input id="r-new-seller-address">
+      <div class="small" style="margin-top:5px">${t("newSellerHint")}</div>
+    </div>
     <div class="row">
       <div><label>${t("price")}</label><input id="r-price" value="${esc(r.price)}"></div>
       <div><label>${t("currency")}</label><select id="r-currency">${["CAD","CNY","USD"].map(c=>`<option ${r.currency===c?"selected":""}>${c}</option>`).join("")}</select></div>
@@ -441,6 +461,20 @@ function processDueRecurringOrders(){
   if(changed) save();
 }
 
+
+function resolveOrCreateInlineSeller(selectId,nameId,addressId){
+  const select=document.getElementById(selectId);
+  if(!select) return null;
+  if(select.value!=="__add__") return select.value||null;
+  const name=(document.getElementById(nameId)?.value||"").trim();
+  if(!name) return "__missing__";
+  const existing=db.sellers.find(s=>s.name.trim().toLowerCase()===name.toLowerCase());
+  if(existing) return existing.id;
+  const seller={id:crypto.randomUUID(),name,defaultPickup:(document.getElementById(addressId)?.value||"").trim()};
+  db.sellers.push(seller);
+  return seller.id;
+}
+
 function render(){
   ensureExistingLastOrderRecords();
   processDueRecurringOrders();
@@ -483,12 +517,13 @@ document.addEventListener("click",e=>{
     const deliveryMode=document.getElementById("o-delivery").value;
     const finalDelivery=deliveryMode==="forwarding"?document.getElementById("o-final").value:(deliveryMode==="homeDelivery"?"home":"pickup");
     const data={
-      product:document.getElementById("o-product").value.trim(),sellerId:document.getElementById("o-seller").value||null,
+      product:document.getElementById("o-product").value.trim(),sellerId:resolveOrCreateInlineSeller("o-seller","o-new-seller-name","o-new-seller-address"),
       price:document.getElementById("o-price").value.trim(),currency:document.getElementById("o-currency").value,
       purchaseType:document.getElementById("o-purchase-type").value,deliveryMode,finalDelivery,
       status:document.getElementById("o-status").value,batch:document.getElementById("o-batch")?.value.trim()||"",
       address:document.getElementById("o-address").value.trim(),notes:document.getElementById("o-notes").value.trim()
     };
+    if(data.sellerId==="__missing__"){document.getElementById("o-new-seller-name")?.focus();return}
     if(!data.product)return;
     if(id)Object.assign(db.orders.find(o=>o.id===id),data);else db.orders.unshift({id:crypto.randomUUID(),...data});
     save();modal=null;render();return
@@ -505,7 +540,7 @@ document.addEventListener("click",e=>{
 
     const data={
       product:document.getElementById("r-product").value.trim(),
-      sellerId:document.getElementById("r-seller").value||null,
+      sellerId:resolveOrCreateInlineSeller("r-seller","r-new-seller-name","r-new-seller-address"),
       price:document.getElementById("r-price").value.trim(),
       currency:document.getElementById("r-currency").value,
       scheduleType,intervalValue,lastOrder,nextOrder,manualNext,
@@ -514,6 +549,7 @@ document.addEventListener("click",e=>{
       autoCreate:document.getElementById("r-auto-create").checked,
       notes:document.getElementById("r-notes").value.trim()
     };
+    if(data.sellerId==="__missing__"){document.getElementById("r-new-seller-name")?.focus();return}
     if(!data.product)return;
     let recurringRecord;
     if(id){
@@ -531,6 +567,14 @@ document.addEventListener("click",e=>{
 });
 document.addEventListener("change",e=>{
   if(e.target.id==="backup-file"){importBackupFile(e.target.files?.[0]);e.target.value="";return}
+  if(e.target.id==="o-seller"){
+    document.getElementById("o-inline-seller")?.classList.toggle("hidden",e.target.value!=="__add__");
+    return;
+  }
+  if(e.target.id==="r-seller"){
+    document.getElementById("r-inline-seller")?.classList.toggle("hidden",e.target.value!=="__add__");
+    return;
+  }
   if(["r-last","r-schedule-type","r-interval"].includes(e.target.id)){
     const manual=document.getElementById("r-manual-next")?.checked;
     if(!manual){
