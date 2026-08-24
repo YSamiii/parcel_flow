@@ -475,6 +475,52 @@ function resolveOrCreateInlineSeller(selectId,nameId,addressId){
   return seller.id;
 }
 
+
+const FORM_DRAFT_KEY="parcelflow-open-form-draft";
+
+function saveOpenFormDraft(){
+  const sheet=document.querySelector(".sheet");
+  if(!sheet)return;
+  const fields=[...sheet.querySelectorAll("input,select,textarea")];
+  const data={};
+  fields.forEach(el=>{
+    if(!el.id)return;
+    data[el.id]=el.type==="checkbox"?el.checked:el.value;
+  });
+  const kind=document.getElementById("o-product")?"order":
+             document.getElementById("r-product")?"recurring":
+             document.getElementById("s-name")?"seller":"other";
+  try{localStorage.setItem(FORM_DRAFT_KEY,JSON.stringify({kind,data,savedAt:new Date().toISOString()}))}catch(e){}
+}
+
+function restoreOpenFormDraft(kind){
+  try{
+    const raw=localStorage.getItem(FORM_DRAFT_KEY);
+    if(!raw)return;
+    const saved=JSON.parse(raw);
+    if(saved.kind!==kind)return;
+    requestAnimationFrame(()=>{
+      Object.entries(saved.data||{}).forEach(([id,val])=>{
+        const el=document.getElementById(id);
+        if(!el)return;
+        if(el.type==="checkbox") el.checked=!!val;
+        else el.value=val;
+      });
+      // restore conditional inline seller/forwarding areas
+      const os=document.getElementById("o-seller");
+      if(os) document.getElementById("o-inline-seller")?.classList.toggle("hidden",os.value!=="__add__");
+      const rs=document.getElementById("r-seller");
+      if(rs) document.getElementById("r-inline-seller")?.classList.toggle("hidden",rs.value!=="__add__");
+      const od=document.getElementById("o-delivery");
+      if(od) document.getElementById("forwarding-fields")?.classList.toggle("hidden",od.value!=="forwarding");
+    });
+  }catch(e){}
+}
+
+function clearOpenFormDraft(){
+  try{localStorage.removeItem(FORM_DRAFT_KEY)}catch(e){}
+}
+
 function render(){
   ensureExistingLastOrderRecords();
   processDueRecurringOrders();
@@ -488,9 +534,9 @@ document.addEventListener("click",e=>{
   const pf=e.target.closest("[data-package-filter]");if(pf){packageFilter=pf.dataset.packageFilter;render();return}
   const soBtn=e.target.closest("[data-status-order]");if(soBtn){db.settings.statusOrder=soBtn.dataset.statusOrder;save();render();return}
   const a=e.target.closest("[data-action]")?.dataset.action;
-  if(a==="new-order"){modal=orderModal();render();return}
-  if(a==="new-recurring"){modal=recurringModal();render();return}
-  if(a==="sellers"){modal=sellerModal();render();return}
+  if(a==="new-order"){modal=orderModal();render();restoreOpenFormDraft("order");return}
+  if(a==="new-recurring"){modal=recurringModal();render();restoreOpenFormDraft("recurring");return}
+  if(a==="sellers"){modal=sellerModal();render();restoreOpenFormDraft("seller");return}
   const dsBtn=e.target.closest("[data-delete-seller]");
   if(dsBtn){db.sellers=db.sellers.filter(s=>s.id!==dsBtn.dataset.deleteSeller);save();render();return}
   const es=e.target.closest("[data-edit-seller]");if(es){modal=sellerModal(es.dataset.editSeller);render();return}
@@ -510,7 +556,7 @@ document.addEventListener("click",e=>{
     const data={name,defaultPickup:document.getElementById("s-address").value.trim()};
     const id=ss.dataset.saveSeller;
     if(id){Object.assign(db.sellers.find(s=>s.id===id),data)}else{db.sellers.push({id:crypto.randomUUID(),...data})}
-    save();modal=null;render();return
+    clearOpenFormDraft();save();modal=null;render();return
   }
   const so=e.target.closest("[data-save-order]");if(so){
     const id=so.dataset.saveOrder;
@@ -526,7 +572,7 @@ document.addEventListener("click",e=>{
     if(data.sellerId==="__missing__"){document.getElementById("o-new-seller-name")?.focus();return}
     if(!data.product)return;
     if(id)Object.assign(db.orders.find(o=>o.id===id),data);else db.orders.unshift({id:crypto.randomUUID(),...data});
-    save();modal=null;render();return
+    clearOpenFormDraft();save();modal=null;render();return
   }
   const sr=e.target.closest("[data-save-recurring]");if(sr){
     const id=sr.dataset.saveRecurring;
@@ -562,7 +608,7 @@ document.addEventListener("click",e=>{
     if(data.createLastRecord && data.lastOrder){
       ensureRecurringOccurrenceOrder(recurringRecord,data.lastOrder);
     }
-    save();modal=null;render();return
+    clearOpenFormDraft();save();modal=null;render();return
   }
 });
 document.addEventListener("change",e=>{
@@ -617,3 +663,14 @@ render();
 
 // Prevent accidental double-tap/double-click zoom behavior.
 document.addEventListener("dblclick", e=>e.preventDefault(), {passive:false});
+
+document.addEventListener("input",e=>{
+  if(e.target.closest(".sheet")) saveOpenFormDraft();
+});
+document.addEventListener("change",e=>{
+  if(e.target.closest(".sheet")) saveOpenFormDraft();
+});
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden"){saveOpenFormDraft();save();}
+});
+window.addEventListener("pagehide",()=>{saveOpenFormDraft();save();});
